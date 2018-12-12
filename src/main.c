@@ -151,10 +151,11 @@ void receive_file(int data_socket, int ack_socket)
                     {
                         insert_packet(data_packet);
                     }
-                    while(find_packet(current_id,&data_packet) == 1)
+                    while(read_packet(current_id,&data_packet) == 1)
                     {
-                        send_ack(ack_socket,'D',current_id++);
                         fwrite(&data_packet.data,sizeof(unsigned char),bytes_to_read,fp);
+                        send_ack(ack_socket,'D',current_id++);
+                        bytes_sent += DATALEN;
                     }
                 }
                 else
@@ -183,7 +184,7 @@ void receive_file(int data_socket, int ack_socket)
 int main( int argc, const char* argv[] )
 {
 	int data_socket = init_socket(DATAPORT);
-    int ack_socket = init_send_socket("10.0.0.105",ACKPORT); 
+    int ack_socket = init_send_socket("127.0.0.1",ACKPORT); 
 	receive_file(data_socket,ack_socket);
 	return 0;
 }

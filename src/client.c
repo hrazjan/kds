@@ -114,7 +114,7 @@ int send_file(char* filename, int sockfd, int rec_sock)
 	
 	Ack ack_packet;
 	
-	int window_size = 5;
+	int window_size = 10;
 	create_queue(window_size);
 
 	size = st.st_size;
