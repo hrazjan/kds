@@ -115,16 +115,32 @@ void receive_file(int data_socket, int ack_socket)
     char file_name[200] = "received/";
 
     create_queue(10);
-
+	
+	while(data_ready<PACKETLEN)
+	{
+		ioctl(data_socket, FIONREAD, &data_ready);
+	}
 	if (read(data_socket, data_buffer, PACKETLEN) == PACKETLEN) 
 	{
-		memcpy(&start_packet, data_buffer, datalen);
+		memcpy(&start_packet, data_buffer, PACKETLEN);
+		printf("start packet type %c\n", start_packet.type);
+		while(start_packet.type!='S')
+		{
+			while(data_ready<PACKETLEN)
+			{
+				ioctl(data_socket, FIONREAD, &data_ready);
+			}
+			memcpy(&start_packet, data_buffer, PACKETLEN);
+			printf("start packet type %c\n", start_packet.type);
+		}
+				
         if (start_packet.type == 'S')
         {
             send_ack(ack_socket,'S',start_packet.size);
+			printf(strcat(file_name,start_packet.name));
+			printf("\n");
 	    	fp = fopen(file_name, "wb+");
-		    printf("START:\nsize = %i\n",start_packet.size);
-        } 
+		} 
 
         while (bytes_sent < start_packet.size)
         {
@@ -187,7 +203,7 @@ void receive_file(int data_socket, int ack_socket)
 int main( int argc, const char* argv[] )
 {
 	int data_socket = init_socket(DATAPORT);
-    int ack_socket = init_send_socket("127.0.0.1",ACKPORT); 
+    int ack_socket = init_send_socket("172.16.236.40",ACKPORT); 
 	receive_file(data_socket,ack_socket);
 	return 0;
 }

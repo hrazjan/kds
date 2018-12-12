@@ -122,18 +122,20 @@ int send_file(char* filename, int sockfd, int rec_sock)
 	fd = fopen(filename, "r");
 	
 	// initialize start packet
-	ack_packet.dataid = -1;
+	ack_packet.dataid = 0;
+	ack_packet.type = '0';
 	Start start_packet;
+	start_packet.type = 'S';
 	start_packet.size = size;
 	printf("size %i\n", size);
 	memcpy(start_packet.name, filename, strlen(filename));
-	char buffer[104]={0};
-	memcpy(buffer, &start_packet, sizeof(Start));
-	
+	char buffer[PACKETLEN]={0};
+	memcpy(buffer, &start_packet, PACKETLEN);
 	// send start packet and wait for ack
 	while(ack_packet.type!='S')
 	{
 		s = send(sockfd, buffer, sizeof(Start), 0);
+		printf("sent %i bytes \n", s);
 		ack_packet = receive_ack(rec_sock, timeout);
 		printf("ack_packet.dataid %i\n", ack_packet.dataid);
 	}
@@ -157,6 +159,7 @@ int send_file(char* filename, int sockfd, int rec_sock)
 	for (int i=0; i<min(window_size,packet_num);i++) //fill queue
 	{
 		data_packet.dataid = i;
+		data_packet.type = 'D';
 		succ = fread(data_packet.data, sizeof(unsigned char), DATALEN, fd);
 		data_packet.crc = crc32(data_packet.data, DATALEN);
 		memcpy(data_buffer, &data_packet, sizeof(Data));
@@ -197,6 +200,7 @@ int send_file(char* filename, int sockfd, int rec_sock)
 
 		for(int i=tail_id+1; i<min(id+window_size,packet_num); i++)
 		{
+			data_packet.type = 'D';
 			data_packet.dataid = i;
 			succ = fread(data_packet.data, sizeof(unsigned char), DATALEN, fd);
 			data_packet.crc = crc32(data_packet.data, DATALEN);
@@ -247,19 +251,17 @@ int init_send_socket(char const *addr)
 int main(int argc, char const *argv[]) 
 { 
 	printf("Hi! client initialized\n");
-	int  sock = init_send_socket("127.0.0.1");
+	int  sock = init_send_socket("172.16.236.40");
 	printf("send_socket created\n");
 	int rec_socket = init_socket();
 	printf("rec_socket created\n");
-	fflush(stdout);
-
 	
 	if (sock==-1)
 	{
 		return -1;
 	}
 	
-	send_file("kuimaze.zip", sock, rec_socket);
+	send_file("sklenicky.png", sock, rec_socket);
 	
 	printf("Finished sending file\n"); 
 	
