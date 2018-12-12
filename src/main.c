@@ -108,22 +108,23 @@ void receive_file(int data_socket, int ack_socket)
     uint32_t new_crc;
 	int datalen, bytes_sent, data_ready, current_id = 0;
     int bytes_to_read = DATALEN;
-	char data_buffer[1024] = {0};
+	char data_buffer[PACKETLEN] = {0};
 	Start start_packet;
     Data data_packet;
 	FILE *fp;
     char file_name[200] = "received/";
 
     create_queue(10);
-	datalen = read( data_socket , data_buffer, 1024);
-	if (datalen == sizeof(Start)) 
+
+	if (read(data_socket, data_buffer, PACKETLEN) == PACKETLEN) 
 	{
 		memcpy(&start_packet, data_buffer, datalen);
-        send_ack(ack_socket,'S',start_packet.size);
-        printf(strcat(file_name,start_packet.name));
-        printf("\n");
-		fp = fopen(file_name, "wb+");
-		printf("START:\nsize = %i\n",start_packet.size);
+        if (start_packet.type == 'S')
+        {
+            send_ack(ack_socket,'S',start_packet.size);
+	    	fp = fopen(file_name, "wb+");
+		    printf("START:\nsize = %i\n",start_packet.size);
+        } 
 
         while (bytes_sent < start_packet.size)
         {
@@ -132,10 +133,11 @@ void receive_file(int data_socket, int ack_socket)
                 bytes_to_read = start_packet.size - bytes_sent;
             }
             ioctl(data_socket, FIONREAD, &data_ready);
-            if (data_ready >= sizeof(Data)) 
+            if (data_ready >= PACKETLEN) 
             {
-                datalen = read( data_socket , data_buffer, 1024);
+                datalen = read( data_socket , data_buffer, PACKETLEN);
                 memcpy(&data_packet, data_buffer, datalen);
+                if (data_packet.type != 'D') {continue;} // drop non-data packets
                 printf("DATA\nid = %u: received %u bytes.\n",data_packet.dataid,bytes_to_read);
                 new_crc = crc32(data_packet.data,DATALEN);
                 if (new_crc == data_packet.crc)
@@ -162,6 +164,7 @@ void receive_file(int data_socket, int ack_socket)
                 {
                     printf("CRC ERROR\n");
                     printf("Received CRC: %u\t\tCounted CRC: %u\n",data_packet.crc, new_crc);
+                    exit(1);
                     send_ack(ack_socket,'N',data_packet.dataid);
                 }
             }
