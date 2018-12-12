@@ -3,24 +3,25 @@
 #include <stdint.h>
 
 #define DATALEN 1015
+#define PACKETLEN 1024
 
 typedef struct {
     char type;
-    uint32_t  size;
     char name[1019];
+    uint32_t  size;
 } Start; 
 
 typedef struct {
     char type;
-    uint32_t dataid;
     unsigned char data[DATALEN];
+    uint32_t dataid;
 	uint32_t crc;
 } Data;
 
 typedef struct {
     char type;
-    uint32_t hash[8];
     char align[991];
+    uint32_t hash[8];
 } Stop; 
 
 typedef struct {
