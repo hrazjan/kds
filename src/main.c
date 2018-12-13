@@ -50,12 +50,13 @@ int init_socket(int port)
         perror("listen"); 
         exit(EXIT_FAILURE); 
     } 
+    /*
     if ((new_socket = accept(server_fd, (struct sockaddr *)&address,  
                     (socklen_t*)&addrlen))<0) 
     { 
         perror("accept"); 
         exit(EXIT_FAILURE); 
-    } 
+    } */
 
 	return new_socket;
 }
@@ -83,12 +84,15 @@ int init_send_socket(char const *addr, int port)
 		printf("\nInvalid address/ Address not supported \n"); 
 		return -1; 
 	} 
-
+	
+	//connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr))
+	
+	/*
 	if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) 
 	{ 
 		printf("\nConnection Failed \n"); 
 		return -1; 
-	}
+	}*/
 	return sock;
 }
 
@@ -100,6 +104,8 @@ void send_ack(int socket, char type, int dataid)
     ack_packet.dataid = dataid;
     printf("sending ack id %i\n",ack_packet.dataid);
     memcpy(ack_buffer,&ack_packet, sizeof(Ack));
+	ack_packet.crc = crc32(ack_buffer, PACKETLEN-4);
+	memcpy(ack_buffer,&ack_packet, sizeof(Ack));
     send(socket, ack_buffer, sizeof(Ack), 0);
 }
 
@@ -155,7 +161,7 @@ void receive_file(int data_socket, int ack_socket)
                 memcpy(&data_packet, data_buffer, datalen);
                 if (data_packet.type != 'D') {continue;} // drop non-data packets
                 printf("DATA\nid = %u: received %u bytes.\n",data_packet.dataid,bytes_to_read);
-                new_crc = crc32(data_packet.data,DATALEN);
+                new_crc = crc32(data_buffer, PACKETLEN-4);
                 if (new_crc == data_packet.crc)
                 {
                     printf("current = %i\nreceived = %i\n",current_id, data_packet.dataid);

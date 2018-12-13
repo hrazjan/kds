@@ -13,8 +13,8 @@
 #include "crc.h"
 #include "packet_queue.h"
 
-#define PORT 8080 
-#define PORT_R 8081
+#define PORT 8082 
+#define PORT_R 8083
 
 #ifndef min
     #define min(a,b) ((a) < (b) ? (a) : (b))
@@ -26,6 +26,7 @@
 
 int init_socket()
 {
+	printf("enter init socket function\n");
 	int server_fd, new_socket; 
     struct sockaddr_in address; 
     int opt = 1; 
@@ -37,7 +38,7 @@ int init_socket()
         perror("socket failed"); 
         exit(EXIT_FAILURE); 
     } 
-    
+    printf("server_fd %i\n", server_fd);
     // Forcefully attaching socket to the port 8080 
     if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, 
                                                 &opt, sizeof(opt))) 
@@ -56,27 +57,32 @@ int init_socket()
         perror("bind failed"); 
         exit(EXIT_FAILURE); 
     } 
+    
     if (listen(server_fd, 3) < 0) 
     { 
         perror("listen"); 
         exit(EXIT_FAILURE); 
     } 
+    /*
     if ((new_socket = accept(server_fd, (struct sockaddr *)&address,  
                     (socklen_t*)&addrlen))<0) 
     { 
         perror("accept"); 
         exit(EXIT_FAILURE); 
-    } 
-
+    }*/ 
+	//printf("new_socket %i\n", new_socket);
 	return new_socket;
 }
 
-Ack receive_ack(int socket, double timeout)
+int receive_ack(int socket, double timeout, Ack * ack_packet)
 {
 	int bytes_in_buffer = 0;
 	char ack_buffer[sizeof(Ack)]={0};
-	Ack ack_packet;
 	clock_t t0 = clock();
+	uint32_t crc;
+	
+	ack_packet->type = 0;
+	ack_packet->dataid = 0;
 	
 	ioctl(socket, FIONREAD, &bytes_in_buffer);
 	while (((double)(clock()-t0)/1000000.)<timeout) //CLOCKS_PER_SEC=1000000
@@ -85,13 +91,19 @@ Ack receive_ack(int socket, double timeout)
 		if (bytes_in_buffer>=sizeof(Ack))
 		{
 			read(socket, ack_buffer, sizeof(Ack));
-			memcpy(&ack_packet, ack_buffer, sizeof(Ack));
-			return ack_packet;
+			memcpy(ack_packet, ack_buffer, sizeof(Ack));
+			crc = crc32(ack_buffer, PACKETLEN-4);
+			if(crc == ack_packet->crc)
+			{
+				return 1;
+			}
+			else
+			{
+				return -1;
+			}
 		}
 	}
-	ack_packet.type = 0;
-	ack_packet.dataid = 0;
-	return ack_packet;
+	return 0;
 }
 
 int send_file(char* filename, int sockfd, int rec_sock)
@@ -134,9 +146,10 @@ int send_file(char* filename, int sockfd, int rec_sock)
 	// send start packet and wait for ack
 	while(ack_packet.type!='S')
 	{
-		s = send(sockfd, buffer, sizeof(Start), 0);
+		printf("about to send\n");
+		s = send(sockfd, buffer, PACKETLEN, 0);
 		printf("sent %i bytes \n", s);
-		ack_packet = receive_ack(rec_sock, timeout);
+		receive_ack(rec_sock, timeout, &ack_packet);
 		printf("ack_packet.dataid %i\n", ack_packet.dataid);
 	}
 	
@@ -150,7 +163,7 @@ int send_file(char* filename, int sockfd, int rec_sock)
 	
 	//send data packets
 	Data data_packet;
-	unsigned char  data_buffer[sizeof(Data)];
+	unsigned char  data_buffer[PACKETLEN];
 	
 	uint32_t bytes_sent = 0;
 	uint32_t tail_id = -1;
@@ -161,8 +174,8 @@ int send_file(char* filename, int sockfd, int rec_sock)
 		data_packet.dataid = i;
 		data_packet.type = 'D';
 		succ = fread(data_packet.data, sizeof(unsigned char), DATALEN, fd);
-		data_packet.crc = crc32(data_packet.data, DATALEN);
 		memcpy(data_buffer, &data_packet, sizeof(Data));
+		data_packet.crc = crc32(data_buffer, PACKETLEN-4);
 		insert_packet(data_packet);
 		tail_id = i;
 	}
@@ -173,10 +186,10 @@ int send_file(char* filename, int sockfd, int rec_sock)
 		for(int i=id; i<min(window_size+id, packet_num); i++)
 		{
 			read_packet(i,&data_packet); 
-			memcpy(data_buffer, &data_packet, sizeof(Data));
-			send(sockfd, data_buffer, sizeof(Data), 0);
+			memcpy(data_buffer, &data_packet, PACKETLEN);
+			send(sockfd, data_buffer, PACKETLEN, 0);
 			//printf("sending id : %i\n", data_packet.dataid);
-			ack_packet = receive_ack(rec_sock, timeout);
+			receive_ack(rec_sock, timeout, &ack_packet);
 			if (ack_packet.type=='D')
 			{
 				printf("ack_packet.dataid: %i\n", ack_packet.dataid);
@@ -203,7 +216,8 @@ int send_file(char* filename, int sockfd, int rec_sock)
 			data_packet.type = 'D';
 			data_packet.dataid = i;
 			succ = fread(data_packet.data, sizeof(unsigned char), DATALEN, fd);
-			data_packet.crc = crc32(data_packet.data, DATALEN);
+			memcpy(data_buffer, &data_packet, PACKETLEN);
+			data_packet.crc = crc32(data_buffer, PACKETLEN-4);
 			insert_packet(data_packet);
 			//printf("packet pushed : %i\n", insert_packet(data_packet));
 			//printf("queue_length: %i\n", get_queue_length());			
@@ -238,12 +252,13 @@ int init_send_socket(char const *addr)
 		printf("\nInvalid address/ Address not supported \n"); 
 		return -1; 
 	} 
-
+	/*
 	if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) 
 	{ 
 		printf("\nConnection Failed \n"); 
 		return -1; 
-	}
+	}*/
+	printf("send socket %i\n", sock);
 	return sock;
 }
 
@@ -251,7 +266,7 @@ int init_send_socket(char const *addr)
 int main(int argc, char const *argv[]) 
 { 
 	printf("Hi! client initialized\n");
-	int  sock = init_send_socket("172.16.236.40");
+	int  sock = init_send_socket("147.32.83.155");
 	printf("send_socket created\n");
 	int rec_socket = init_socket();
 	printf("rec_socket created\n");

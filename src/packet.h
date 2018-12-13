@@ -7,8 +7,9 @@
 
 typedef struct {
     char type;
-    char name[1019];
-    uint32_t  size;
+    char name[1015];
+    uint32_t size;
+	uint32_t crc;
 } Start; 
 
 typedef struct {
@@ -20,13 +21,15 @@ typedef struct {
 
 typedef struct {
     char type;
-    char align[991];
+    char align[987];
     uint32_t hash[8];
+	uint32_t crc;
 } Stop; 
 
 typedef struct {
 	char type; //'S' = start, 'D'=data
 	uint32_t dataid; // size for S, dataid for D
+	uint32_t crc;
 } Ack;
 
 #endif
