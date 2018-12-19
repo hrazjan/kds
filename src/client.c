@@ -49,10 +49,12 @@ int receive_ack(int socket, double timeout, Ack * ack_packet, struct sockaddr * 
 	crc = crc32(ack_buffer, sizeof(Ack)-4);
 	if(crc == ack_packet->crc)
 	{
+		printf("received packet type %c, id %u\n", ack_packet->type, ack_packet->dataid);
 		return 1;
 	}
 	else
 	{
+		printf("crc error\n");
 		ack_packet->dataid = 0;
 		ack_packet->type = 0;
 		return -2;
@@ -128,6 +130,7 @@ int send_file(char* filename, int sockfd, int rec_sock, struct sockaddr * dest_a
 	
 	uint32_t bytes_sent = 0;
 	uint32_t tail_id = 0;
+	uint32_t head_id = 0;
 	uint32_t id = 0;
 	int lim;
 	for (uint32_t i=0; i<min(window_size,packet_num);i++) //fill queue
@@ -145,23 +148,27 @@ int send_file(char* filename, int sockfd, int rec_sock, struct sockaddr * dest_a
 	{
 		printf("current id: %i\n", id);
 		printf("tail_id: %i\n", tail_id);
-		for(int i=id; i<min(window_size+id, packet_num); i++)
+		printf("head_id: %i\n", head_id);
+		printf("packet_num %i\n", packet_num);
+		for(int i=head_id; i<tail_id+1; i++)
 		{
 			s = read_packet(i,&data_packet); 
 			printf("packet %i read %i\n", i, s);
 			memcpy(data_buffer, &data_packet, PACKETLEN);
 			sendto(sockfd, data_buffer, PACKETLEN, MSG_CONFIRM, dest_addr, sizeof(*dest_addr));
 			printf("sending id : %i\n", data_packet.dataid);
-			receive_ack(rec_sock, timeout, &ack_packet, src_addr, &addrlen);
+			/*
+			if(receive_ack(rec_sock, timeout, &ack_packet, src_addr, &addrlen)<0){continue;}
 			if (ack_packet.type=='D')
 			{
 				printf("ack_packet.dataid: %i\n", ack_packet.dataid);
 				id = ack_packet.dataid+1;
-				lim = id-window_size;
-				for(uint32_t j=max(0,lim); j<id;j++)
+				for(uint32_t j=head_id; j<id;j++)
 				{
 					//find_packet(j, &data_packet);
-					printf("packet id %i found: %i\n", j, find_packet(j, &data_packet));
+					s = find_packet(j, &data_packet);
+					head_id = j+1;
+					printf("packet id %i found: %i\n", j, s);
 					printf("queue length %i\n", get_queue_length());
 				}
 				break;
@@ -171,9 +178,31 @@ int send_file(char* filename, int sockfd, int rec_sock, struct sockaddr * dest_a
 				read_packet(ack_packet.dataid, &data_packet);
 				memcpy(data_buffer, &data_packet, PACKETLEN);
 				sendto(sockfd, data_buffer, PACKETLEN, MSG_CONFIRM, dest_addr, sizeof(*dest_addr));
-			}
+			}*/
+			if(receive_ack(rec_sock, timeout, &ack_packet, src_addr, &addrlen)==1){break;}
 		}
 
+		//if(receive_ack(rec_sock, timeout, &ack_packet, src_addr, &addrlen)<0){continue;}
+		if (ack_packet.type=='D')
+		{
+			printf("ack_packet.dataid: %i\n", ack_packet.dataid);
+			id = ack_packet.dataid+1;
+			for(uint32_t j=head_id; j<id;j++)
+			{
+				//find_packet(j, &data_packet);
+				s = find_packet(j, &data_packet);
+				head_id = j+1;
+				printf("packet id %i found: %i\n", j, s);
+				printf("queue length %i\n", get_queue_length());
+			}
+		}
+		else if(ack_packet.type=='N')
+		{
+			read_packet(ack_packet.dataid, &data_packet);
+			memcpy(data_buffer, &data_packet, PACKETLEN);
+			sendto(sockfd, data_buffer, PACKETLEN, MSG_CONFIRM, dest_addr, sizeof(*dest_addr));
+		}
+		
 		for(uint32_t i=tail_id+1; i<min(id+window_size,packet_num); i++)
 		{
 			data_packet.type = 'D';
@@ -181,7 +210,7 @@ int send_file(char* filename, int sockfd, int rec_sock, struct sockaddr * dest_a
 			succ = fread(data_packet.data, sizeof(unsigned char), DATALEN, fd);
 			memcpy(data_buffer, &data_packet, PACKETLEN);
 			data_packet.crc = crc32(data_buffer, PACKETLEN-4);
-			insert_packet(data_packet);
+			//insert_packet(data_packet);
 			printf("packet pushed : %i\n", insert_packet(data_packet));
 			printf("queue_length: %i\n", get_queue_length());			
 			tail_id = i;
@@ -232,7 +261,7 @@ int main(int argc, char const *argv[])
 	
 	struct timeval t;
     t.tv_sec = 0;
-    t.tv_usec = 10000;
+    t.tv_usec = 5000;
     //PACKET queue[MAX_PACKETS];
 	int sockfd, sockfdrec;
 	char buf[PACKETLEN];
@@ -248,8 +277,9 @@ int main(int argc, char const *argv[])
 		perror("socket creation failed");
 		exit(1);
 	}
-    setsockopt(sockfdrec, SOL_SOCKET, SO_RCVTIMEO, (const char*)&t, sizeof(t));
-	
+    int option = 1;
+	//setsockopt(sockfdrec, SOL_SOCKET, SO_REUSEADDR, (const char*)&option, sizeof(option));
+	setsockopt(sockfdrec, SOL_SOCKET, SO_RCVTIMEO, (const char*)&t, sizeof(t));
 	//memset(&recaddr, 0, sizeof(recaddr));
 	recaddr.sin_family = AF_INET;
 	recaddr.sin_port = htons(ACKPORT);

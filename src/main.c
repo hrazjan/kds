@@ -13,8 +13,8 @@
 #include "packet_queue.h"
 #include "socket_fun.h"
 
-#define DATAPORT 8081
-#define ACKPORT 8082
+#define DATAPORT 8080
+#define ACKPORT 8081
 
 void send_ack(int socket, char type, int dataid, struct sockaddr* src_addr, socklen_t len)
 {
@@ -22,7 +22,7 @@ void send_ack(int socket, char type, int dataid, struct sockaddr* src_addr, sock
     char ack_buffer[sizeof(Ack)] = {0};
     ack_packet.type = type;
     ack_packet.dataid = dataid;
-    printf("sending ack type %c\n",ack_packet.type);
+    printf("sending %c ack id %i\n",ack_packet.type,ack_packet.dataid);
     memcpy(ack_buffer,&ack_packet, sizeof(Ack));
 	ack_packet.crc = crc32(ack_buffer, sizeof(Ack)-4);
 	memcpy(ack_buffer,&ack_packet, sizeof(Ack));
@@ -81,7 +81,7 @@ void receive_file(int data_socket, int ack_socket, struct sockaddr * src_addr, s
                 if (data_packet.type != 'D') {continue;} // drop non-data packets
                 printf("DATA\nid = %u: received %u bytes.\n",data_packet.dataid,bytes_to_read);
                 new_crc = crc32(data_buffer, PACKETLEN-4);
-                if (new_crc == new_crc)
+                if (new_crc == data_packet.crc)
                 {
                     printf("current = %i\nreceived = %i\n",current_id, data_packet.dataid);
                     if (current_id == data_packet.dataid)
