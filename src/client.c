@@ -3,6 +3,7 @@
 #include <stdio.h> 
 #include <sys/socket.h> 
 #include <stdlib.h> 
+#include <arpa/inet.h>
 #include <netinet/in.h> 
 #include <string.h> 
 #include <sys/stat.h>
@@ -12,9 +13,10 @@
 //#include "packet.h"
 #include "crc.h"
 #include "packet_queue.h"
+#include "socket_fun.h"
 
-#define PORT 8082 
-#define PORT_R 8083
+#define DATAPORT 8082
+#define ACKPORT 8083
 
 #ifndef min
     #define min(a,b) ((a) < (b) ? (a) : (b))
@@ -24,57 +26,8 @@
     #define max(a,b) ((a) > (b) ? (a) : (b))
 #endif
 
-int init_socket()
-{
-	printf("enter init socket function\n");
-	int server_fd, new_socket; 
-    struct sockaddr_in address; 
-    int opt = 1; 
-    int addrlen = sizeof(address); 
-    
-    // Creating socket file descriptor 
-    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) 
-    { 
-        perror("socket failed"); 
-        exit(EXIT_FAILURE); 
-    } 
-    printf("server_fd %i\n", server_fd);
-    // Forcefully attaching socket to the port 8080 
-    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, 
-                                                &opt, sizeof(opt))) 
-    { 
-        perror("setsockopt"); 
-        exit(EXIT_FAILURE); 
-    } 
-    address.sin_family = AF_INET; 
-    address.sin_addr.s_addr = INADDR_ANY; 
-    address.sin_port = htons( PORT_R ); 
-    
-    // Forcefully attaching socket to the port 8080 
-    if (bind(server_fd, (struct sockaddr *)&address,  
-                                sizeof(address))<0) 
-    { 
-        perror("bind failed"); 
-        exit(EXIT_FAILURE); 
-    } 
-    
-    if (listen(server_fd, 3) < 0) 
-    { 
-        perror("listen"); 
-        exit(EXIT_FAILURE); 
-    } 
-    /*
-    if ((new_socket = accept(server_fd, (struct sockaddr *)&address,  
-                    (socklen_t*)&addrlen))<0) 
-    { 
-        perror("accept"); 
-        exit(EXIT_FAILURE); 
-    }*/ 
-	//printf("new_socket %i\n", new_socket);
-	return new_socket;
-}
 
-int receive_ack(int socket, double timeout, Ack * ack_packet)
+int receive_ack(int socket, double timeout, Ack * ack_packet, struct sockaddr * src_addr, socklen_t *len)
 {
 	int bytes_in_buffer = 0;
 	char ack_buffer[sizeof(Ack)]={0};
@@ -84,29 +37,29 @@ int receive_ack(int socket, double timeout, Ack * ack_packet)
 	ack_packet->type = 0;
 	ack_packet->dataid = 0;
 	
-	ioctl(socket, FIONREAD, &bytes_in_buffer);
-	while (((double)(clock()-t0)/1000000.)<timeout) //CLOCKS_PER_SEC=1000000
+	int n;
+	//socklen_t len = sizeof(*src_addr);
+	n = recvfrom(socket, ack_buffer, sizeof(Ack), MSG_WAITALL, src_addr, len);
+	if(n!=sizeof(Ack))
 	{
-		ioctl(socket, FIONREAD, &bytes_in_buffer);
-		if (bytes_in_buffer>=sizeof(Ack))
-		{
-			read(socket, ack_buffer, sizeof(Ack));
-			memcpy(ack_packet, ack_buffer, sizeof(Ack));
-			crc = crc32(ack_buffer, PACKETLEN-4);
-			if(crc == ack_packet->crc)
-			{
-				return 1;
-			}
-			else
-			{
-				return -1;
-			}
-		}
+		printf("error length of received ack %i\n", n);
+		return -1;
 	}
-	return 0;
+	memcpy(ack_packet, ack_buffer, sizeof(Ack));
+	crc = crc32(ack_buffer, sizeof(Ack)-4);
+	if(crc == ack_packet->crc)
+	{
+		return 1;
+	}
+	else
+	{
+		ack_packet->dataid = 0;
+		ack_packet->type = 0;
+		return -2;
+	}
 }
 
-int send_file(char* filename, int sockfd, int rec_sock)
+int send_file(char* filename, int sockfd, int rec_sock, struct sockaddr * dest_addr, struct sockaddr *src_addr)
 {
 	FILE *fd;
 	FILE *fw;
@@ -140,17 +93,25 @@ int send_file(char* filename, int sockfd, int rec_sock)
 	start_packet.type = 'S';
 	start_packet.size = size;
 	printf("size %i\n", size);
+	memset(start_packet.name, '\0', sizeof(start_packet.name));
 	memcpy(start_packet.name, filename, strlen(filename));
 	char buffer[PACKETLEN]={0};
 	memcpy(buffer, &start_packet, PACKETLEN);
+	start_packet.crc = crc32(buffer, PACKETLEN-4);
+	memcpy(buffer, &start_packet, PACKETLEN);
+	socklen_t addrlen = sizeof(*dest_addr);
 	// send start packet and wait for ack
+	//s = sendto(sockfd, buffer, PACKETLEN, MSG_CONFIRM, (const struct sockaddr *) dest_addr, sizeof(*dest_addr));	
 	while(ack_packet.type!='S')
 	{
 		printf("about to send\n");
-		s = send(sockfd, buffer, PACKETLEN, 0);
+		s = 0;
+		s = sendto(sockfd, buffer, PACKETLEN, MSG_CONFIRM, dest_addr, sizeof(*dest_addr));
 		printf("sent %i bytes \n", s);
-		receive_ack(rec_sock, timeout, &ack_packet);
-		printf("ack_packet.dataid %i\n", ack_packet.dataid);
+		s = receive_ack(rec_sock, timeout, &ack_packet, src_addr, &addrlen);
+		//s = recvfrom(rec_sock, buffer, sizeof(Ack), 0, dest_addr, &addrlen);
+		printf("receive ack %i\n", s);
+		printf("ack_packet.type %c\n", ack_packet.type);
 	}
 	
 	printf("ack_packet.dataid: %i\n sending file starts\n", ack_packet.dataid);
@@ -166,17 +127,18 @@ int send_file(char* filename, int sockfd, int rec_sock)
 	unsigned char  data_buffer[PACKETLEN];
 	
 	uint32_t bytes_sent = 0;
-	uint32_t tail_id = -1;
+	uint32_t tail_id = 0;
 	uint32_t id = 0;
 	int lim;
-	for (int i=0; i<min(window_size,packet_num);i++) //fill queue
+	for (uint32_t i=0; i<min(window_size,packet_num);i++) //fill queue
 	{
 		data_packet.dataid = i;
 		data_packet.type = 'D';
 		succ = fread(data_packet.data, sizeof(unsigned char), DATALEN, fd);
-		memcpy(data_buffer, &data_packet, sizeof(Data));
+		memcpy(data_buffer, &data_packet, PACKETLEN);
 		data_packet.crc = crc32(data_buffer, PACKETLEN-4);
-		insert_packet(data_packet);
+		printf("ID %u, CRC %u\n", data_packet.dataid, data_packet.crc);
+		printf("packet inserted %i\n", insert_packet(data_packet));
 		tail_id = i;
 	}
 	while(id<packet_num)
@@ -185,42 +147,43 @@ int send_file(char* filename, int sockfd, int rec_sock)
 		printf("tail_id: %i\n", tail_id);
 		for(int i=id; i<min(window_size+id, packet_num); i++)
 		{
-			read_packet(i,&data_packet); 
+			s = read_packet(i,&data_packet); 
+			printf("packet %i read %i\n", i, s);
 			memcpy(data_buffer, &data_packet, PACKETLEN);
-			send(sockfd, data_buffer, PACKETLEN, 0);
-			//printf("sending id : %i\n", data_packet.dataid);
-			receive_ack(rec_sock, timeout, &ack_packet);
+			sendto(sockfd, data_buffer, PACKETLEN, MSG_CONFIRM, dest_addr, sizeof(*dest_addr));
+			printf("sending id : %i\n", data_packet.dataid);
+			receive_ack(rec_sock, timeout, &ack_packet, src_addr, &addrlen);
 			if (ack_packet.type=='D')
 			{
 				printf("ack_packet.dataid: %i\n", ack_packet.dataid);
 				id = ack_packet.dataid+1;
 				lim = id-window_size;
-				for(int j=max(0,lim); j<id;j++)
+				for(uint32_t j=max(0,lim); j<id;j++)
 				{
-					find_packet(j, &data_packet);
-					//printf("packet id %i found: %i\n", i, find_packet(i, &data_packet));
-					//printf("id %i, %i\n", i, fwrite(&data_packet.data, sizeof(char), DATALEN, fw));
+					//find_packet(j, &data_packet);
+					printf("packet id %i found: %i\n", j, find_packet(j, &data_packet));
+					printf("queue length %i\n", get_queue_length());
 				}
 				break;
 			}
 			else if(ack_packet.type=='N')
 			{
 				read_packet(ack_packet.dataid, &data_packet);
-				memcpy(data_buffer, &data_packet, sizeof(Data));
-				send(sockfd, data_buffer, sizeof(Data),0);
+				memcpy(data_buffer, &data_packet, PACKETLEN);
+				sendto(sockfd, data_buffer, PACKETLEN, MSG_CONFIRM, dest_addr, sizeof(*dest_addr));
 			}
 		}
 
-		for(int i=tail_id+1; i<min(id+window_size,packet_num); i++)
+		for(uint32_t i=tail_id+1; i<min(id+window_size,packet_num); i++)
 		{
 			data_packet.type = 'D';
-			data_packet.dataid = i;
+	 		data_packet.dataid = i;
 			succ = fread(data_packet.data, sizeof(unsigned char), DATALEN, fd);
 			memcpy(data_buffer, &data_packet, PACKETLEN);
 			data_packet.crc = crc32(data_buffer, PACKETLEN-4);
 			insert_packet(data_packet);
-			//printf("packet pushed : %i\n", insert_packet(data_packet));
-			//printf("queue_length: %i\n", get_queue_length());			
+			printf("packet pushed : %i\n", insert_packet(data_packet));
+			printf("queue_length: %i\n", get_queue_length());			
 			tail_id = i;
 		}
 	}	
@@ -229,56 +192,103 @@ int send_file(char* filename, int sockfd, int rec_sock)
 	return 0;
 }
 
-int init_send_socket(char const *addr)
-{
-	struct sockaddr_in address; 
-	int sock = 0, valread; 
-	struct sockaddr_in serv_addr; 
-
-	if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) 
-	{ 
-		printf("\n Socket creation error \n"); 
-		return -1; 
-	} 
-
-	memset(&serv_addr, '0', sizeof(serv_addr)); 
-
-	serv_addr.sin_family = AF_INET; 
-	serv_addr.sin_port = htons(PORT); 
-	
-	// Convert IPv4 and IPv6 addresses from text to binary form 
-	if(inet_pton(AF_INET, addr, &serv_addr.sin_addr)<=0) 
-	{ 
-		printf("\nInvalid address/ Address not supported \n"); 
-		return -1; 
-	} 
-	/*
-	if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) 
-	{ 
-		printf("\nConnection Failed \n"); 
-		return -1; 
-	}*/
-	printf("send socket %i\n", sock);
-	return sock;
-}
-
-
 int main(int argc, char const *argv[]) 
 { 
-	printf("Hi! client initialized\n");
-	int  sock = init_send_socket("147.32.83.155");
+	/*
+	struct sockaddr_in my_addr, dest_addr;
+	
+	//memset(&my_addr, 0, sizeof(my_addr));
+	//memset(&dest_addr, 0, sizeof(dest_addr));
+	
+	//int  sock = init_send_socket("127.0.0.1", DATAPORT, &dest_addr);
+	//int  sock = init_send_socket("127.0.0.1");
 	printf("send_socket created\n");
-	int rec_socket = init_socket();
+	//int rec_socket = init_socket(ACKPORT, &dest_addr);
 	printf("rec_socket created\n");
 	
+	int sockfd;
+  
+	//memset(&servaddr, 0, sizeof(servaddr)); 
+	
+    // Creating socket file descriptor 
+    if ( (sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0 ) { 
+        perror("socket creation failed"); 
+        exit(EXIT_FAILURE); 
+    } 
+    
+    memset(&dest_addr, 0, sizeof(dest_addr)); 
+	
+	dest_addr.sin_family = AF_INET; 
+	dest_addr.sin_port = htons(DATAPORT);
+    // Filling server information 
+	
+	dest_addr.sin_addr.s_addr = INADDR_ANY;
+	int sock = sockfd;	
 	if (sock==-1)
 	{
 		return -1;
 	}
+	*/
 	
-	send_file("sklenicky.png", sock, rec_socket);
+	struct timeval t;
+    t.tv_sec = 0;
+    t.tv_usec = 10000;
+    //PACKET queue[MAX_PACKETS];
+	int sockfd, sockfdrec;
+	char buf[PACKETLEN];
+	char buf2[10];
+	clock_t start;
+	FILE* fp;
+	struct sockaddr_in bindaddr, recaddr;
+	socklen_t addrlen = sizeof(bindaddr);
+
+    printf("init\n");
+
+    if ((sockfdrec = socket(AF_INET, SOCK_DGRAM, 0)) == -1) { //zalozeni socketu
+		perror("socket creation failed");
+		exit(1);
+	}
+    setsockopt(sockfdrec, SOL_SOCKET, SO_RCVTIMEO, (const char*)&t, sizeof(t));
+	
+	//memset(&recaddr, 0, sizeof(recaddr));
+	recaddr.sin_family = AF_INET;
+	recaddr.sin_port = htons(ACKPORT);
+	recaddr.sin_addr.s_addr = inet_addr("127.0.0.1");//INADDR_ANY;
+	memset(recaddr.sin_zero, 0x00, sizeof(recaddr.sin_zero));
+
+
+	/*
+	if (bind(sockfdrec, (struct sockaddr *)&recaddr, sizeof(recaddr)) == -1) {
+	    perror("bind failed");
+		exit(1);
+	}*/
+	
+	if (bind(sockfdrec, (struct sockaddr *)&recaddr, sizeof(recaddr)) == -1) {
+		perror("bind failed\n");
+		exit(1);
+	} else {
+		printf("bind on RECEIVE socked succenfull\n");
+	}
+	
+	printf("bind\n");	
+
+
+	if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) == -1) { //zalozeni socketu
+		perror("socket creation failed");
+		exit(1);
+	}
+	
+	memset(&bindaddr, 0, sizeof(bindaddr));
+	bindaddr.sin_family = AF_INET;
+	bindaddr.sin_addr.s_addr = inet_addr("127.0.0.1");//INADDR_ANY; //inet_addr("192.168.43.100") ; //147.32.219.190
+	bindaddr.sin_port = htons(DATAPORT);
+	
+	send_file("sklenicky.png", sockfd, sockfdrec, (struct sockaddr *) &bindaddr, (struct sockaddr *)&recaddr);
+	//send_file("sklenicky.png", sockfd, sockfd, (struct sockaddr *) &bindaddr, (struct sockaddr *)&recaddr);
 	
 	printf("Finished sending file\n"); 
+	
+	close(sockfdrec);
 	
 	return 0; 
 } 

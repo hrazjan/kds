@@ -58,7 +58,7 @@ int insert_packet(Data data_packet)
 }
 
 
-int read_packet(uint32_t id, Data* data_packet)
+int find_packet(uint32_t id, Data* data_packet)
 {
     if (pq.length == 0) {return -1;}
     Node* current = pq.queue_head;
@@ -98,7 +98,7 @@ int read_packet(uint32_t id, Data* data_packet)
     return 1;
 }
 
-int find_packet(uint32_t id, Data* data_packet)
+int read_packet(uint32_t id, Data* data_packet)
 {
     if (pq.length == 0) {return -1;}
     Node* current = pq.queue_head;
@@ -113,26 +113,7 @@ int find_packet(uint32_t id, Data* data_packet)
         else {return -1;}
     }
     *data_packet = current->data;
-    if (pq.length == 1) 
-    {
-        pq.queue_head = pq.queue_tail = NULL;
-    }    
-    else
-    {
-        if (!previous)
-        {
-            pq.queue_head = current->next;
-        }
-        else if (!current->next)
-        {
-            previous->next = NULL;
-            pq.queue_tail = previous;            
-        }
-        else 
-        {
-            previous->next = current->next;
-        }
-    }
+	printf("read %i\n", data_packet->dataid);
     return 1;
 }
 
