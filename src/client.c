@@ -14,9 +14,10 @@
 #include "crc.h"
 #include "packet_queue.h"
 #include "socket_fun.h"
+#include "sha256.h"
 
-#define DATAPORT 8082
-#define ACKPORT 8083
+#define DATAPORT 8081
+#define ACKPORT 8082
 
 #ifndef min
     #define min(a,b) ((a) < (b) ? (a) : (b))
@@ -78,7 +79,9 @@ int send_file(char* filename, int sockfd, int rec_sock, struct sockaddr * dest_a
 	uint32_t size;
 	
 	uint32_t crc;
-	
+	SHA256_CTX sha256_ctx;
+	sha256_init(&sha256_ctx);
+
 	Ack ack_packet;
 	
 	int window_size = 10;
@@ -120,9 +123,9 @@ int send_file(char* filename, int sockfd, int rec_sock, struct sockaddr * dest_a
 	ack_packet.dataid = 0;
 	
 	fw = fopen("file_to_send.txt", "wb+");
-	
 	//parse data
 	packet_num = size/DATALEN+1;
+	printf("packetnum = %u",packet_num);
 	
 	//send data packets
 	Data data_packet;
@@ -138,6 +141,7 @@ int send_file(char* filename, int sockfd, int rec_sock, struct sockaddr * dest_a
 		data_packet.dataid = i;
 		data_packet.type = 'D';
 		succ = fread(data_packet.data, sizeof(unsigned char), DATALEN, fd);
+		sha256_update(&sha256_ctx,data_packet.data,DATALEN);
 		memcpy(data_buffer, &data_packet, PACKETLEN);
 		data_packet.crc = crc32(data_buffer, PACKETLEN-4);
 		printf("ID %u, CRC %u\n", data_packet.dataid, data_packet.crc);
@@ -208,6 +212,7 @@ int send_file(char* filename, int sockfd, int rec_sock, struct sockaddr * dest_a
 			data_packet.type = 'D';
 	 		data_packet.dataid = i;
 			succ = fread(data_packet.data, sizeof(unsigned char), DATALEN, fd);
+			sha256_update(&sha256_ctx,data_packet.data,DATALEN);
 			memcpy(data_buffer, &data_packet, PACKETLEN);
 			data_packet.crc = crc32(data_buffer, PACKETLEN-4);
 			//insert_packet(data_packet);
@@ -215,7 +220,24 @@ int send_file(char* filename, int sockfd, int rec_sock, struct sockaddr * dest_a
 			printf("queue_length: %i\n", get_queue_length());			
 			tail_id = i;
 		}
-	}	
+	}
+
+	Stop stop_packet;
+	BYTE hash[8*4];
+	sha256_final(&sha256_ctx,hash);
+	stop_packet.type = 'E';
+	memcpy(stop_packet.hash, hash, 8*4);
+	memcpy(data_buffer, &stop_packet, PACKETLEN);
+	stop_packet.crc = crc32(data_buffer, PACKETLEN-4);
+	memcpy(buffer, &stop_packet, PACKETLEN);
+	s = sendto(sockfd, buffer, PACKETLEN, MSG_CONFIRM, dest_addr, sizeof(*dest_addr));
+	printf("sent %i bytes \n", s);
+	s = receive_ack(rec_sock, timeout, &ack_packet, src_addr, &addrlen);
+	//s = recvfrom(rec_sock, buffer, sizeof(Ack), 0, dest_addr, &addrlen);
+	printf("receive ack %i\n", s);
+	printf("ack_packet.type %c\n", ack_packet.type);
+
+
 	fclose(fd);
 	fclose(fw);
 	return 0;

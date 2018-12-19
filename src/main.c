@@ -12,6 +12,7 @@
 #include "crc.h"
 #include "packet_queue.h"
 #include "socket_fun.h"
+#include "sha256.h"
 
 #define DATAPORT 8080
 #define ACKPORT 8081
@@ -37,14 +38,16 @@ void receive_file(int data_socket, int ack_socket, struct sockaddr * src_addr, s
 	char data_buffer[PACKETLEN] = {0};
 	Start start_packet;
     Data data_packet;
+	Stop stop_packet;
 	FILE *fp;
+	SHA256_CTX ctx;
+	sha256_init(&ctx);
     char file_name[200] = "received/";
 	
 	socklen_t addrlen = sizeof(* src_addr);
 
     create_queue(10);
-	int r;
-	r = recvfrom(data_socket, data_buffer, PACKETLEN, MSG_WAITALL, dest_addr, &addrlen);
+	int r = recvfrom(data_socket, data_buffer, PACKETLEN, MSG_WAITALL, dest_addr, &addrlen);
 	
 	if(r==PACKETLEN)
 	{
@@ -74,58 +77,67 @@ void receive_file(int data_socket, int ack_socket, struct sockaddr * src_addr, s
             {
                 bytes_to_read = start_packet.size - bytes_sent;
             }
-            //ioctl(data_socket, FIONREAD, &data_ready);
-            if (r==PACKETLEN) 
-            {
-                //datalen = read( data_socket , data_buffer, PACKETLEN);
-                if (data_packet.type != 'D') {continue;} // drop non-data packets
-                printf("DATA\nid = %u: received %u bytes.\n",data_packet.dataid,bytes_to_read);
-                new_crc = crc32(data_buffer, PACKETLEN-4);
-                if (new_crc == data_packet.crc)
-                {
-                    printf("current = %i\nreceived = %i\n",current_id, data_packet.dataid);
-                    if (current_id == data_packet.dataid)
-                    {
-                        fwrite(&data_packet.data,sizeof(unsigned char),bytes_to_read,fp);
-                        send_ack(ack_socket,'D',current_id++,src_addr,addrlen);
-                        bytes_sent += DATALEN;
-                    }
-                    else if (current_id>data_packet.dataid)
-					{
-						send_ack(ack_socket, 'D', current_id-1, src_addr, addrlen);
-					}
-                    else 
-                    {
-                        insert_packet(data_packet);
-                    }
-                    while(read_packet(current_id,&data_packet) == 1)
-                    {
-                        fwrite(&data_packet.data,sizeof(unsigned char),bytes_to_read,fp);
-                        send_ack(ack_socket,'D',current_id++,src_addr,addrlen);
-                        bytes_sent += DATALEN;
-                    }
-                }
-                else
-                {
-                    printf("CRC ERROR\n");
-                    printf("Received CRC: %u\t\tCounted CRC: %u\n",data_packet.crc, new_crc);
-                    send_ack(ack_socket,'N',data_packet.dataid,src_addr,addrlen);
-                }
-            }
-            else 
-            {
-                while(find_packet(current_id,&data_packet) == 1)
-                {
-                    send_ack(ack_socket,'D',current_id++,src_addr,addrlen);
-                    fwrite(&data_packet.data,sizeof(unsigned char),bytes_to_read,fp);
-                    bytes_sent += DATALEN;
+			if (data_packet.type != 'D') {continue;} // drop non-data packets
+			printf("DATA\nid = %u: received %u bytes.\n",data_packet.dataid,bytes_to_read);
+			new_crc = crc32(data_buffer, PACKETLEN-4);
+			if (new_crc == data_packet.crc)
+			{
+				printf("current = %i\nreceived = %i\n",current_id, data_packet.dataid);
+				if (current_id == data_packet.dataid)
+				{
+					fwrite(&data_packet.data,sizeof(unsigned char),bytes_to_read,fp);
+					sha256_update(&ctx,data_packet.data,DATALEN);
+					send_ack(ack_socket,'D',current_id++,src_addr,addrlen);
+					bytes_sent += DATALEN;
 				}
-            }
+				else if (current_id>data_packet.dataid)
+				{
+					send_ack(ack_socket, 'D', current_id-1, src_addr, addrlen);
+				}
+				else 
+				{
+					insert_packet(data_packet);
+				}
+				while(read_packet(current_id,&data_packet) == 1)
+				{
+					fwrite(&data_packet.data,sizeof(unsigned char),bytes_to_read,fp);
+					sha256_update(&ctx,data_packet.data,DATALEN);
+					send_ack(ack_socket,'D',current_id++,src_addr,addrlen);
+					bytes_sent += DATALEN;
+				}
+			}
+			else
+			{
+				printf("CRC ERROR\n");
+				printf("Received CRC: %u\t\tCounted CRC: %u\n",data_packet.crc, new_crc);
+				send_ack(ack_socket,'N',data_packet.dataid,src_addr,addrlen);
+			}
             fflush(stdout);
 			r = recvfrom(data_socket, data_buffer, PACKETLEN, MSG_WAITALL, dest_addr, &addrlen);
 			memcpy(&data_packet, data_buffer, PACKETLEN);
         }
-        printf("bla\n");
+
+		if (crc32(data_buffer, PACKETLEN-4)!=data_packet.crc || data_packet.type != 'E')
+		{
+			while(crc32(data_buffer, PACKETLEN-4)!=data_packet.crc || data_packet.type != 'E')
+			{
+				printf("ERROR: Stop packet crc doesn't match!\n");
+				r = recvfrom(data_socket, data_buffer, PACKETLEN, MSG_WAITALL, dest_addr, &addrlen);
+				memcpy(&data_packet, data_buffer, PACKETLEN);
+				printf("Packet type: %c\n", data_packet.type);
+			}
+		}
+		memcpy(&stop_packet, &data_packet, PACKETLEN);
+		BYTE hash[8*4];
+		sha256_final(&ctx, hash);
+		if (memcmp( hash, stop_packet.hash, 8*4) == 0)
+		{
+			send_ack(ack_socket,'E',0,src_addr,addrlen);
+		}
+		else
+		{
+			printf("ERROR: Hash doesn't match!\n");
+		}
         fclose(fp);
 	}
 }
