@@ -22,7 +22,7 @@ typedef struct {
 typedef struct {
     char type;
     char align[987];
-    uint32_t hash[8];
+    uint8_t hash[8*4];
 	uint32_t crc;
 } Stop; 
 
