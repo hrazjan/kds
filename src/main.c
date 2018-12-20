@@ -30,7 +30,7 @@ void send_ack(int socket, char type, int dataid, struct sockaddr* src_addr, sock
 	sendto(socket, ack_buffer, sizeof(ack_packet), MSG_CONFIRM, src_addr, len);
 }
 
-void receive_file(int data_socket, int ack_socket, struct sockaddr * src_addr, struct sockaddr * dest_addr)
+void receive_file(int data_socket, int ack_socket, struct sockaddr * src_addr, struct sockaddr * dest_addr, int winsize)
 {
     uint32_t new_crc;
 	uint32_t datalen, bytes_sent, data_ready, current_id = 0;
@@ -46,7 +46,7 @@ void receive_file(int data_socket, int ack_socket, struct sockaddr * src_addr, s
 	
 	socklen_t addrlen = sizeof(* src_addr);
 
-    create_queue(10);
+    create_queue(winsize);
 	int r = recvfrom(data_socket, data_buffer, PACKETLEN, MSG_WAITALL, dest_addr, &addrlen);
 	
 	if(r==PACKETLEN)
@@ -132,7 +132,11 @@ void receive_file(int data_socket, int ack_socket, struct sockaddr * src_addr, s
 		sha256_final(&ctx, hash);
 		if (memcmp( hash, stop_packet.hash, 8*4) == 0)
 		{
-			send_ack(ack_socket,'E',0,src_addr,addrlen);
+			for (int i = 0; i< 20;i++)
+			{
+				send_ack(ack_socket,'E',0,src_addr,addrlen);
+				usleep(1000);
+			}
 		}
 		else
 		{
@@ -145,6 +149,10 @@ void receive_file(int data_socket, int ack_socket, struct sockaddr * src_addr, s
 
 int main( int argc, const char* argv[] )
 {
+	int winsize = 1;
+	if (argc > 1) {
+		winsize = atoi(argv[1]);
+	}
 
 	int sockfd_in, sockfd_out;
 	//zalozeni socketu send
@@ -158,7 +166,7 @@ int main( int argc, const char* argv[] )
 	}
 	//memset(&socket_out, 0, sizeof(socket_out));
 	socket_out.sin_family = AF_INET;
-	socket_out.sin_addr.s_addr = inet_addr("127.0.0.1");//INADDR_ANY; //inet_addr("147.32.216.145");
+	socket_out.sin_addr.s_addr = inet_addr("147.32.217.244");//INADDR_ANY; //inet_addr("147.32.216.145");
 	socket_out.sin_port = htons(ACKPORT);
 	memset(socket_out.sin_zero, 0x00, sizeof(socket_out.sin_zero));
 
@@ -176,7 +184,7 @@ int main( int argc, const char* argv[] )
 	memset(&socket_in, 0, sizeof(socket_in));
 	socket_in.sin_family = AF_INET;
 	socket_in.sin_port = htons(DATAPORT);
-	socket_in.sin_addr.s_addr = inet_addr("127.0.0.1");//INADDR_ANY;
+	socket_in.sin_addr.s_addr = inet_addr("0.0.0.0");//INADDR_ANY;
 	//strcpy(buf_out, "ready");
 
 	
@@ -187,7 +195,7 @@ int main( int argc, const char* argv[] )
 		printf("bind on SEND socked succenfull\n");
 	}
 	
-	receive_file(sockfd_in,sockfd_out, (struct sockaddr *) &socket_out, (struct sockaddr *) &socket_in);
+	receive_file(sockfd_in,sockfd_out, (struct sockaddr *) &socket_out, (struct sockaddr *) &socket_in, winsize);
 	
 	//close(data_socket);
 	return 0;
