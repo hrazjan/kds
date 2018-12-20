@@ -137,6 +137,7 @@ void receive_file(int data_socket, int ack_socket, struct sockaddr * src_addr, s
 		memcpy(&stop_packet, &data_packet, PACKETLEN);
 		BYTE hash[8*4];
 		sha256_final(&ctx, hash);
+		fclose(fp);
 		if (memcmp( hash, stop_packet.hash, 8*4) == 0)
 		{
 			for (int i = 0; i< 20;i++)
@@ -148,8 +149,8 @@ void receive_file(int data_socket, int ack_socket, struct sockaddr * src_addr, s
 		else
 		{
 			printf("ERROR: Hash doesn't match!\n");
+			remove(file_name);
 		}
-        fclose(fp);
 	}
 }
 
