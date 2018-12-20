@@ -43,7 +43,7 @@ int receive_ack(int socket, double timeout, Ack * ack_packet, struct sockaddr * 
 	n = recvfrom(socket, ack_buffer, sizeof(Ack), MSG_WAITALL, src_addr, len);
 	if(n!=sizeof(Ack))
 	{
-		printf("error length of received ack %i\n", n);
+		//printf("error length of received ack %i\n", n);
 		return -1;
 	}
 	memcpy(ack_packet, ack_buffer, sizeof(Ack));
@@ -55,7 +55,7 @@ int receive_ack(int socket, double timeout, Ack * ack_packet, struct sockaddr * 
 	}
 	else
 	{
-		printf("crc error\n");
+		printf("CRC ERROR\n");
 		ack_packet->dataid = 0;
 		ack_packet->type = 0;
 		return -2;
@@ -158,7 +158,7 @@ int send_file(char* filename, int sockfd, int rec_sock, struct sockaddr * dest_a
 		for(int i=head_id; i<tail_id+1; i++)
 		{
 			s = read_packet(i,&data_packet); 
-			printf("packet %i read %i\n", i, s);
+			//printf("packet %i read %i\n", i, s);
 			memcpy(data_buffer, &data_packet, PACKETLEN);
 			sendto(sockfd, data_buffer, PACKETLEN, MSG_CONFIRM, dest_addr, sizeof(*dest_addr));
 			printf("sending id : %i\n", data_packet.dataid);

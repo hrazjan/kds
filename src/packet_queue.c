@@ -113,7 +113,7 @@ int read_packet(uint32_t id, Data* data_packet)
         else {return -1;}
     }
     *data_packet = current->data;
-	printf("read %i\n", data_packet->dataid);
+	//printf("read %i\n", data_packet->dataid);
     return 1;
 }
 
