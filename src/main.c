@@ -56,13 +56,19 @@ void receive_file(int data_socket, int ack_socket, struct sockaddr * src_addr, s
 		
 		while(data_packet.type!='D')
 		{
-			if(crc32(data_buffer, PACKETLEN-4)!=data_packet.crc){continue;}
+			if(crc32(data_buffer, PACKETLEN-4)!=data_packet.crc)
+			{
+				printf("CRC ERROR\n");
+				printf("Packet type %c\n", data_packet.type);
+				continue;
+			}
 			if (data_packet.type == 'S')
 			{
 				memcpy(&start_packet, &data_packet, PACKETLEN);
 				send_ack(ack_socket,'S',start_packet.size,src_addr, addrlen);
 				printf("size %i\n", start_packet.size);
 			}
+			printf("listening\n");
 			r = recvfrom(data_socket, data_buffer, PACKETLEN, MSG_WAITALL, dest_addr, &addrlen);
 			memcpy(&data_packet, data_buffer, PACKETLEN);
 			printf("data packet type %c\n", data_packet.type);
@@ -113,6 +119,7 @@ void receive_file(int data_socket, int ack_socket, struct sockaddr * src_addr, s
 				send_ack(ack_socket,'N',data_packet.dataid,src_addr,addrlen);
 			}
             fflush(stdout);
+			printf("listening\n");
 			r = recvfrom(data_socket, data_buffer, PACKETLEN, MSG_WAITALL, dest_addr, &addrlen);
 			memcpy(&data_packet, data_buffer, PACKETLEN);
         }
