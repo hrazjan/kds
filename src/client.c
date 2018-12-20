@@ -230,9 +230,13 @@ int send_file(char* filename, int sockfd, int rec_sock, struct sockaddr * dest_a
 	memcpy(data_buffer, &stop_packet, PACKETLEN);
 	stop_packet.crc = crc32(data_buffer, PACKETLEN-4);
 	memcpy(buffer, &stop_packet, PACKETLEN);
-	s = sendto(sockfd, buffer, PACKETLEN, MSG_CONFIRM, dest_addr, sizeof(*dest_addr));
-	printf("sent %i bytes \n", s);
-	s = receive_ack(rec_sock, timeout, &ack_packet, src_addr, &addrlen);
+	
+	while(ack_packet.type!='E')
+	{	
+		s = sendto(sockfd, buffer, PACKETLEN, MSG_CONFIRM, dest_addr, sizeof(*dest_addr));
+		printf("sent %i bytes \n", s);
+		s = receive_ack(rec_sock, timeout, &ack_packet, src_addr, &addrlen);
+	}
 	//s = recvfrom(rec_sock, buffer, sizeof(Ack), 0, dest_addr, &addrlen);
 	printf("receive ack %i\n", s);
 	printf("ack_packet.type %c\n", ack_packet.type);
@@ -283,7 +287,7 @@ int main(int argc, char const *argv[])
 	
 	struct timeval t;
     t.tv_sec = 0;
-    t.tv_usec = 5000;
+    t.tv_usec = 100000;
     //PACKET queue[MAX_PACKETS];
 	int sockfd, sockfdrec;
 	char buf[PACKETLEN];
@@ -305,9 +309,8 @@ int main(int argc, char const *argv[])
 	//memset(&recaddr, 0, sizeof(recaddr));
 	recaddr.sin_family = AF_INET;
 	recaddr.sin_port = htons(ACKPORT);
-	recaddr.sin_addr.s_addr = inet_addr("127.0.0.1");//INADDR_ANY;
+	recaddr.sin_addr.s_addr = INADDR_ANY;
 	memset(recaddr.sin_zero, 0x00, sizeof(recaddr.sin_zero));
-
 
 	/*
 	if (bind(sockfdrec, (struct sockaddr *)&recaddr, sizeof(recaddr)) == -1) {
@@ -332,7 +335,7 @@ int main(int argc, char const *argv[])
 	
 	memset(&bindaddr, 0, sizeof(bindaddr));
 	bindaddr.sin_family = AF_INET;
-	bindaddr.sin_addr.s_addr = inet_addr("127.0.0.1");//INADDR_ANY; //inet_addr("192.168.43.100") ; //147.32.219.190
+	bindaddr.sin_addr.s_addr = inet_addr("147.32.217.38");//INADDR_ANY; //inet_addr("192.168.43.100") ; //147.32.219.190
 	bindaddr.sin_port = htons(DATAPORT);
 	
 	send_file("NetDerper_CLI.svg", sockfd, sockfdrec, (struct sockaddr *) &bindaddr, (struct sockaddr *)&recaddr);
