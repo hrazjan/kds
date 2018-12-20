@@ -65,7 +65,6 @@ int receive_ack(int socket, double timeout, Ack * ack_packet, struct sockaddr * 
 int send_file(char* filename, int sockfd, int rec_sock, struct sockaddr * dest_addr, struct sockaddr *src_addr)
 {
 	FILE *fd;
-	FILE *fw;
 	clock_t t0;
 	double timeout = 0.0001;
 	
@@ -88,8 +87,11 @@ int send_file(char* filename, int sockfd, int rec_sock, struct sockaddr * dest_a
 	create_queue(window_size);
 
 	size = st.st_size;
-	
 	fd = fopen(filename, "r");
+	if (fd==NULL){
+		printf("ERROR: File does not exist!\n");	
+		exit(1);
+	}
 	
 	// initialize start packet
 	ack_packet.dataid = 0;
@@ -122,7 +124,6 @@ int send_file(char* filename, int sockfd, int rec_sock, struct sockaddr * dest_a
 	printf("ack_packet.dataid: %i\n sending file starts\n", ack_packet.dataid);
 	ack_packet.dataid = 0;
 	
-	fw = fopen("file_to_send.txt", "wb+");
 	//parse data
 	packet_num = size/DATALEN+1;
 	printf("packetnum = %u",packet_num);
@@ -243,12 +244,23 @@ int send_file(char* filename, int sockfd, int rec_sock, struct sockaddr * dest_a
 
 
 	fclose(fd);
-	fclose(fw);
 	return 0;
 }
 
 int main(int argc, char const *argv[]) 
 { 
+	int winsize = 1;
+	if (argc > 1) {
+		winsize = atoi(argv[1]);
+	}
+	char* dataaddr = "127.0.0.1";
+	if (argc > 2) {
+		dataaddr = argv[2];
+	}
+	char* filename = "sklenicky.png";
+	if (argc > 3) {
+		filename = argv[3];
+	}
 	/*
 	struct sockaddr_in my_addr, dest_addr;
 	
@@ -287,7 +299,7 @@ int main(int argc, char const *argv[])
 	
 	struct timeval t;
     t.tv_sec = 0;
-    t.tv_usec = 100000;
+    t.tv_usec = 10000;
     //PACKET queue[MAX_PACKETS];
 	int sockfd, sockfdrec;
 	char buf[PACKETLEN];
@@ -335,10 +347,10 @@ int main(int argc, char const *argv[])
 	
 	memset(&bindaddr, 0, sizeof(bindaddr));
 	bindaddr.sin_family = AF_INET;
-	bindaddr.sin_addr.s_addr = inet_addr("147.32.217.38");//INADDR_ANY; //inet_addr("192.168.43.100") ; //147.32.219.190
+	bindaddr.sin_addr.s_addr = inet_addr("147.32.217.244");//INADDR_ANY; //inet_addr("192.168.43.100") ; //147.32.219.190
 	bindaddr.sin_port = htons(DATAPORT);
 	
-	send_file("NetDerper_CLI.svg", sockfd, sockfdrec, (struct sockaddr *) &bindaddr, (struct sockaddr *)&recaddr);
+	send_file(filename, sockfd, sockfdrec, (struct sockaddr *) &bindaddr, (struct sockaddr *)&recaddr);
 	//send_file("sklenicky.png", sockfd, sockfd, (struct sockaddr *) &bindaddr, (struct sockaddr *)&recaddr);
 	
 	printf("Finished sending file\n"); 
