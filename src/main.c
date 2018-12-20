@@ -153,7 +153,12 @@ int main( int argc, const char* argv[] )
 	if (argc > 1) {
 		winsize = atoi(argv[1]);
 	}
+	char* ackaddr = "255.255.255.255";
+	if (argc > 2) {
+		ackaddr = argv[2];
+	}
 
+	printf("ackaddr = %s\n",ackaddr);
 	int sockfd_in, sockfd_out;
 	//zalozeni socketu send
 	struct sockaddr_in socket_out;
@@ -166,7 +171,7 @@ int main( int argc, const char* argv[] )
 	}
 	//memset(&socket_out, 0, sizeof(socket_out));
 	socket_out.sin_family = AF_INET;
-	socket_out.sin_addr.s_addr = inet_addr("147.32.217.244");//INADDR_ANY; //inet_addr("147.32.216.145");
+	socket_out.sin_addr.s_addr = inet_addr(ackaddr);//INADDR_ANY; //inet_addr("147.32.216.145");
 	socket_out.sin_port = htons(ACKPORT);
 	memset(socket_out.sin_zero, 0x00, sizeof(socket_out.sin_zero));
 
