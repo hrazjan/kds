@@ -60,6 +60,8 @@ void receive_file(int data_socket, int ack_socket, struct sockaddr * src_addr, s
 			{
 				printf("CRC ERROR\n");
 				printf("Packet type %c\n", data_packet.type);
+				r = recvfrom(data_socket, data_buffer, PACKETLEN, MSG_WAITALL, dest_addr, &addrlen);
+				memcpy(&data_packet, data_buffer, PACKETLEN);
 				continue;
 			}
 			if (data_packet.type == 'S')
