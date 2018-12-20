@@ -16,8 +16,8 @@
 #include "socket_fun.h"
 #include "sha256.h"
 
-#define DATAPORT 8081
-#define ACKPORT 8082
+#define DATAPORT 8082
+#define ACKPORT 8083
 
 #ifndef min
     #define min(a,b) ((a) < (b) ? (a) : (b))
@@ -335,7 +335,7 @@ int main(int argc, char const *argv[])
 	bindaddr.sin_addr.s_addr = inet_addr("127.0.0.1");//INADDR_ANY; //inet_addr("192.168.43.100") ; //147.32.219.190
 	bindaddr.sin_port = htons(DATAPORT);
 	
-	send_file("sklenicky.png", sockfd, sockfdrec, (struct sockaddr *) &bindaddr, (struct sockaddr *)&recaddr);
+	send_file("NetDerper_CLI.svg", sockfd, sockfdrec, (struct sockaddr *) &bindaddr, (struct sockaddr *)&recaddr);
 	//send_file("sklenicky.png", sockfd, sockfd, (struct sockaddr *) &bindaddr, (struct sockaddr *)&recaddr);
 	
 	printf("Finished sending file\n"); 
